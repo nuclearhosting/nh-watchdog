@@ -26,15 +26,14 @@
 
   # Ping
  
-  # Hromadne vlozenie serverov
- 
  # Log kontrol / spusteni na konkretny server
  
  # Running multithread
  
- # MOznost nastavit vlastny notify email
+ # MOznost nastavit vlastny notify email / sms cislo -> tabulka kontaktov
  
  # MOznost nastavit vlastnu sms branu
+
 
 ###################################################### 
 # SQLite Data file - install parameter in the future
@@ -75,8 +74,15 @@ if($argc == 1) {
 				
 			break;
 			case '--bulkinsert':
-				echo "Not implemented yet.\n";
-				die;			
+				echo "CSV file format is: hostname,ipaddress,port,response_http_code,response_timeout\n";
+				echo "Do not use header in your CSV file! \n";
+				echo "Example of your csv file: \nserver1.google.com,8.8.8.8,80,200,10\nserver2.google.com,8.8.4.4,80,403,10\n";
+				echo "Enter your CSV filename or path: ";
+				$filepath = sread();
+				swriteln();	
+				
+				WatchDogBulkInsert($filepath);
+				die;
 			break;
 			case '--insert':
 					# Check, if is Watchdog installed or not yet
@@ -162,15 +168,18 @@ function WatchDogInsertServer($params) {
 	
 	global $sqlite_path;
 	
-	# Let's do some tests for input strings	
+	# Let's do some tests for input strings
 	if (!filter_var($params['ipaddress'], FILTER_VALIDATE_IP) === true) {
 		die("IP address is invalid. You must enter valid IPv4 or IPv6 address\n");
 	} elseif(!filter_var($params['port'], FILTER_VALIDATE_INT) === true || $params['port'] > 65535 || $params['port'] < 80 ) {
 		die("Port number is invalid - enter valid port number\n");
+	} elseif(!filter_var($params['response'], FILTER_VALIDATE_INT) === true || $params['response'] <200 || $params['response'] >550) {
+		die("HTTP Response Code invalid - enter valid HTTP response code between 200 - 550\n");
+	} elseif(!filter_var($params['timeout'], FILTER_VALIDATE_INT) === true || $params['timeout'] <10 || $params['timeout'] > 90) {
+		die("Correct your response time - allowed is 10 - 90. \n");
 	}
 	
-	$params['hostname'] = trim(htmlspecialchars($params['hostname'], ENT_QUOTES));
-	$params['response'] = htmlspecialchars($params['response'], ENT_QUOTES);	
+	$params['hostname'] = trim(htmlspecialchars($params['hostname'], ENT_QUOTES));	
 	
 	# End Input validation
 	
@@ -184,6 +193,7 @@ function WatchDogInsertServer($params) {
 			die();
 	} catch(PDOException $e) {
 			echo $e->getMessage();
+			die;
 	}
 	
 }
@@ -283,7 +293,75 @@ function WatchDogRun() {
 	}
 	
 }
+# Bulk insert
+function WatchDogBulkInsert($filename) {
 
+		global $sqlite_path;
+
+		# Check if source file exists
+		if(!file_exists($filename)) {
+				echo "Source CSV file does not exists\n";
+				die;
+		}
+		
+		# Open file and load data
+		$csv = array_map('str_getcsv', file($filename));
+				
+		foreach($csv as $row) {
+			
+			if ( count($row) != 5 ) {
+					echo "Some of CSV file row does not contains all required fields. Check your CSV file and correct missing values\n";
+					die;
+			}
+			
+			# Validate parsed data
+			if(empty($row[0]) || empty($row[1]) || empty($row[2]) || empty($row[3]) || empty($row[4])) {
+				die("All fields are required\n");
+			} elseif (!filter_var($row[1], FILTER_VALIDATE_IP) === true) {
+				die("IP address is invalid. You must enter valid IPv4 or IPv6 address\n");
+			} elseif(!filter_var($row[2], FILTER_VALIDATE_INT) === true || $row[2] > 65535 || $row[2] < 80 ) {
+				die("Port number is invalid - enter valid port number\n");
+			} elseif(!filter_var($row[3], FILTER_VALIDATE_INT) === true || $row[3] <200 || $row[3] >550) {
+				die("HTTP Response Code invalid - enter valid HTTP response code between 200 - 550\n");
+			} elseif(!filter_var($row[4], FILTER_VALIDATE_INT) === true || $row[4] <10 || $row[4] > 90) {
+				die("Correct your response time - allowed is 10 - 90. \n");
+			}
+			
+			$hostname = trim(htmlspecialchars($row[0], ENT_QUOTES));
+		}
+		
+		# If is everything okay, let's bulk insert
+
+		$watchdog_db = new PDO("sqlite:{$sqlite_path}");
+		$sql_insert = "INSERT INTO servers (hostname,ipaddress,port,response,timeout,active) 
+					   VALUES (:hostname, :ipaddress, :port, :response, :timeout, 1)";
+
+		$statement = $watchdog_db->prepare($sql_insert);
+		
+		$statement->bindParam(':hostname', $hostname);
+		$statement->bindParam(':ipaddress', $ipaddress);
+		$statement->bindParam(':port', $port);
+		$statement->bindParam(':response', $response);
+		$statement->bindParam(':timeout', $timeout);
+		
+		foreach ($csv as $row) {
+			$hostname = $row[0];
+			$ipaddress = $row[1];
+			$port = $row[2];
+			$response = $row[3];
+			$timeout = $row[4];
+
+			$statement->execute();
+			
+			echo "Inserting server ".$hostname."\n";
+			
+		}
+		
+		echo "All is done!\n";
+		die;
+		
+	
+}
 ####### Helpers ##########
 
 	
@@ -322,7 +400,23 @@ function GetHttpResponseCode($url,$timeout) {
 }
 
 function SendSMS($params) {
-	
+
+	$tc = $params['tc'];
+	$text = $params['text'];
+
+	$token = sha1('LiveHostApiex1efvel589'.md5("ex1efvel"));
+	$data = base64_encode($text);
+
+
+	$ch = curl_init();
+	curl_setopt($ch,CURLOPT_URL, 'http://whmcs.livehost.cz/tools/sms.php');
+	curl_setopt($ch,CURLOPT_POST, true);
+	curl_setopt($ch, CURLOPT_POSTFIELDS, "token=$token&tc=+420702804250&data=$data");
+	curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+
+	$result = curl_exec($ch);
+
+	curl_close($ch);	
 	
 }
 
