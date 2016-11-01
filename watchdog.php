@@ -30,7 +30,7 @@
  
  # Running multithread
  
- # MOznost nastavit vlastny notify email / sms cislo -> tabulka kontaktov
+ # Pridelit kontaktom len urcite servery
  
  # MOznost nastavit vlastnu sms branu
 
@@ -124,8 +124,61 @@ if($argc == 1) {
 				echo "Not implemented yet.\n";
 				die;			
 			break;
+			case '--list-servers':
+				echo "Not implemented yet.\n";
+				die;						
+			break;
 			case '--run':
 				WatchDogRun();
+			break;
+			case '--add-contact':
+				echo "Contact name: ";
+				$contact_name = sread();
+				echo "Contact SMS phone number (format: 00420xxxxxxxxx): ";
+				$contact_phone = sread();
+				echo "Contact e-mail: ";
+				$contact_email = sread();
+				
+				swriteln();
+				
+				WatchDogAddContact(array('contact_name' => $contact_name, 'contact_phone' => $contact_phone, 'contact_email' => $contact_email));
+				exit;
+				
+			break;
+			case '--list-contacts':
+				WatchDogListAllContacts();
+				exit;
+			break;
+			case '--delete-contact':
+				WatchDogListAllContacts();
+				echo "Which contact do you want to delete? Enter ID:\n";	
+				$contact_id_to_delete = sread();
+				
+				swriteln();
+				
+				WatchDogDeleteContact($contact_id_to_delete);
+				
+				exit;
+			break;
+			case '--activate-contact':
+				WatchDogListAllContacts();
+				echo "Which contact do you want to set as active? Enter ID:\n";	
+				$contact_id = sread();
+				swriteln();
+				
+				WatchDogActivateContact($contact_id);
+				
+				exit;
+			break;
+			case '--deactivate-contact':
+				WatchDogListAllContacts();
+				echo "Which contact do you want to set as no active? Enter ID:\n";	
+				$contact_id = sread();
+				swriteln();
+				
+				WatchDogDeactivateContact($contact_id);
+				
+				exit;
 			break;
 			default:
 				echo "Unkown parameter, use --help\n";
@@ -148,7 +201,8 @@ function WatchDogInstall() {
 		
 		$watchdog_db = new PDO("sqlite:{$sqlite_path}");
 		
-		$sql_table = "CREATE TABLE IF NOT EXISTS servers(id INTEGER PRIMARY KEY AUTOINCREMENT, hostname VARCHAR(255), ipaddress VARCHAR(255) UNIQUE, port INT(5), response VARCHAR(55), timeout INT(3), active TEXT, last_check DATE);";
+		$sql_table = "CREATE TABLE IF NOT EXISTS servers(id INTEGER PRIMARY KEY AUTOINCREMENT, hostname VARCHAR(255), ipaddress VARCHAR(255) UNIQUE, port INT(5), response VARCHAR(55), timeout INT(3), active TEXT, last_check DATE);
+					  CREATE TABLE IF NOT EXISTS contacts(id INTEGER PRIMARY KEY AUTOINCREMENT, contact_name VARCHAR(255), phone VARCHAR(255), email VARCHAR(255), active TEXT);";
 		
 		try {    
 			# Creating table
@@ -255,12 +309,70 @@ function WatchDogRun() {
 	$watchdog_db = new PDO("sqlite:{$sqlite_path}");
 	$result = $watchdog_db->query($sql_select);
 	
+	####################################################################
+	$child_list = 0;
+
+	declare(ticks = 1);
+	pcntl_signal(SIGCHLD, 'sig_handler');	
+	####################################################################
+	
 	foreach($result as $result) {		
 		$count = 0;
 		$maxTries = 3;
 		$send_notification = 0;
 		
-		$httpcode = GetHttpResponseCode($result['ipaddress'],$result['timeout']);
+		################################################################
+		 // Fork
+			$pid = pcntl_fork();
+			switch ($pid) {
+			case -1: // Error
+				die('Fork failed, your system is b0rked!');
+				break;
+			case 0: // Child
+				// Remove Signal Handlers in Child
+				pcntl_signal(SIGCHLD,SIG_DFL);
+				###
+				$httpcode = GetHttpResponseCode($result['ipaddress'],$result['timeout']);
+				
+				while(true) {
+					
+					$expected_response = !empty($result['response']) ? $result['response'] : '200';
+					
+					if ($httpcode == $expected_response) {
+							echo "OK ".$result['ipaddress']."\n";
+							
+							# Insert log, update last_check
+							
+							break;
+					} else {
+							echo "not ok ".$httpcode." ".$count."\n";
+							# insert log, update last_check
+							
+							if($count == $maxTries) { 
+								$send_notification = 1;
+								break;
+							} else {
+								sleep(5);
+								$count++;
+							}
+					}
+				}
+				###
+				exit(0);
+				break;
+			default: // Parent
+				echo "run: $child_list processes\n";
+				if ($child_list >= 10) {
+					// Just wait for one to die
+					pcntl_wait($x);
+					$child_list--;
+				}
+				$child_list++;
+				break;
+			}
+		################################################################
+		
+	/*	$httpcode = GetHttpResponseCode($result['ipaddress'],$result['timeout']);
 		
 		while(true) {
 			
@@ -285,10 +397,34 @@ function WatchDogRun() {
 					}
 			}
 		}
-		
+		*/
 		# Send notification on faulty host check
 		if($send_notification == 1) {
 				echo "Sending notification for ".$result['ipaddress']."\n";
+					
+				# Get all active contacts				
+				$result_s = $watchdog_db->query("SELECT * FROM contacts WHERE active=1");
+				
+				$contacts = $result_s->fetchAll();
+				
+				if(count($contacts) >0) {
+					
+					foreach ($contacts as $contact) {
+						# print_r($contact);
+						if(!empty($contact['email'])) {
+							# Send Email to all contacts
+							SendEmail( array('email' => $contact['email'], 'server' => $result['hostname'], 'ipaddress' => $result['ipaddress']) );
+						}
+						
+						if(!empty($contact['phone'])) {
+							# Send SMS to all contacts
+							echo "Toto je SMS alert na vypadok";
+							# SendSMS(array('phone' => $contact['phone'], 'server' => $result['hostname'], 'ipaddress' => $result['ipaddress']);
+						}
+						
+					}
+				}
+				
 		}
 	}
 	
@@ -362,8 +498,189 @@ function WatchDogBulkInsert($filename) {
 		
 	
 }
+# Add contact
+function WatchDogAddContact($params) {
+
+		global $sqlite_path;
+		
+		# Validate input
+		if(empty($params['contact_name'])) {
+				echo "Contact name is required field\n";
+				die;
+		} elseif( empty($params['contact_phone']) && empty($params['contact_email'])) {
+				echo "Contact phone number OR email is required. I cannot notify without it\n";
+				die;
+		} elseif(!ctype_alnum( str_replace(array(" ","-","_"), '', $params['contact_name'] ) )) {
+				echo "Only alfa-num chars and - _ are allow in contact name\n";
+				die;
+		}
+		
+		if(!empty($params['contact_email'])) {
+				if (filter_var($params['contact_email'], FILTER_VALIDATE_EMAIL) === false) {
+					echo "Email address is not valid\n";
+					die;
+				}
+		}
+		
+		if(!empty($params['contact_phone'])) {
+			if(!preg_match("/^((\+420|00420) ?)?\d{3}( |-)?\d{3}( |-)?\d{3}/", $params['contact_phone'])) {
+				echo "Invalid phone number format\n";
+				die;
+			}
+		}
+		
+		# Insert contact into database
+		$sql_insert = "INSERT INTO contacts (contact_name, phone, email, active) VALUES ('".$params['contact_name']."', '".$params['contact_phone']."', '".$params['contact_email']."', 1)";
+		
+		$watchdog_db = new PDO("sqlite:{$sqlite_path}");
+		try {
+			$watchdog_db->query($sql_insert);
+			
+			echo "Contact inserted successfuly.\n";
+			die;
+		} catch(PDOException $e) {
+			echo $e->getMessage();
+		}
+		
+	
+}
+# List all contacts from db
+function WatchDogListAllContacts() {
+
+	global $sqlite_path;
+	
+	$watchdog_db = new PDO("sqlite:{$sqlite_path}");
+	$sql = "SELECT * FROM contacts ORDER BY id ASC";
+	
+	try {
+		$rows = $watchdog_db->query($sql);
+		
+		echo "ID:\tName:\tEmail:\tPhone:\tActive:\n";
+		
+		foreach ($rows as $row) {
+			echo $row['id']."\t".$row['contact_name']."\t".$row['email']."\t".$row['phone']."\t".$row['active']."\n";
+		}		
+	} catch(PDOException $e) {
+			echo $e->getMessage();
+	}
+	
+}
+# Delete contact from db
+function WatchDogDeleteContact($contactid) {
+	
+	global $sqlite_path;
+	
+	if(empty($contactid) || !filter_var($contactid, FILTER_VALIDATE_INT) === true) {
+		echo "Contact ID is not valid.\n";
+		exit;
+	}
+	
+	
+	$sql = "SELECT count(id) FROM contacts WHERE id='{$contactid}'";
+	$sql2 = "DELETE FROM contacts WHERE id='{$contactid}'";
+	
+	$watchdog_db = new PDO("sqlite:{$sqlite_path}");
+	
+	try {
+		$count = $watchdog_db->query($sql);
+		
+		if($count->fetch()[0] <> 1) {
+			echo "Contact ID ".$contactid." not found. Nothing to do.\n";
+			exit;
+		} else {
+			$watchdog_db->query($sql2);
+			
+			echo "Contact ID ".$contactid." deleted sucessfuly.\n";
+			exit;
+		}
+		
+	} catch(PDOException $e) {
+			echo $e->getMessage();
+			exit;
+	}
+	
+	
+}
+# Activate inactive contact
+function WatchDogActivateContact($contact_id) {
+
+	global $sqlite_path;
+	
+	
+	if(empty($contact_id) || !filter_var($contact_id, FILTER_VALIDATE_INT) === true) {
+		echo "Contact ID is not valid.\n";
+		exit;
+	}
+	
+	$watchdog_db = new PDO("sqlite:{$sqlite_path}");
+		
+	$sql = "SELECT count(id) FROM contacts WHERE id='{$contact_id}'";
+	$sql2 = "UPDATE contacts SET active=1 WHERE id='{$contact_id}'";
+	
+	try {
+		$count = $watchdog_db->query($sql);
+		
+		if($count->fetch()[0] <> 1) {
+			echo "Contact ID ".$contact_id." not found. Nothing to do.\n";
+			exit;
+		} else {
+			$watchdog_db->query($sql2);
+			
+			echo "Contact ID ".$contact_id." activated sucessfuly.\n";
+			exit;
+		}		
+	} catch(PDOException $e) {
+			echo $e->getMessage();
+			exit;
+	}
+
+}
+# Deactivate active contact
+function WatchDogDeactivateContact($contact_id) {
+
+	global $sqlite_path;
+	
+	if(empty($contact_id) || !filter_var($contact_id, FILTER_VALIDATE_INT) === true) {
+		echo "Contact ID is not valid.\n";
+		exit;
+	}
+	
+	$watchdog_db = new PDO("sqlite:{$sqlite_path}");
+		
+	$sql = "SELECT count(id) FROM contacts WHERE id='{$contact_id}'";
+	$sql2 = "UPDATE contacts SET active=0 WHERE id='{$contact_id}'";
+	
+	try {
+		$count = $watchdog_db->query($sql);
+		
+		if($count->fetch()[0] <> 1) {
+			echo "Contact ID ".$contact_id." not found. Nothing to do.\n";
+			exit;
+		} else {
+			$watchdog_db->query($sql2);
+			
+			echo "Contact ID ".$contact_id." deactivated sucessfuly.\n";
+			exit;
+		}		
+	} catch(PDOException $e) {
+			echo $e->getMessage();
+			exit;
+	}
+	
+}
 ####### Helpers ##########
 
+function sig_handler($sig)	{
+		global $child_list;
+		switch ($sig) {
+		case SIGCHLD:
+			$child_list--;
+			while( ( $pid = pcntl_wait ( $sig, WNOHANG ) ) > 0 ){
+				$x = pcntl_wexitstatus ( $sig );
+			}
+			break;
+		}
+}
 	
 function sread() {
 	$input = fgets(STDIN);
@@ -401,9 +718,10 @@ function GetHttpResponseCode($url,$timeout) {
 
 function SendSMS($params) {
 
-	$tc = $params['tc'];
-	$text = $params['text'];
-
+	$tc = $params['phone'];
+	
+	$text = 'ALERT - Host '.$params['server'].' ('.$params['ipaddress'].') not responding. Date: '.date('Y-m-d H:i:s');
+	
 	$token = sha1('LiveHostApiex1efvel589'.md5("ex1efvel"));
 	$data = base64_encode($text);
 
@@ -411,7 +729,7 @@ function SendSMS($params) {
 	$ch = curl_init();
 	curl_setopt($ch,CURLOPT_URL, 'http://whmcs.livehost.cz/tools/sms.php');
 	curl_setopt($ch,CURLOPT_POST, true);
-	curl_setopt($ch, CURLOPT_POSTFIELDS, "token=$token&tc=+420702804250&data=$data");
+	curl_setopt($ch, CURLOPT_POSTFIELDS, "token=$token&tc=$tc&data=$data");
 	curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 
 	$result = curl_exec($ch);
@@ -420,4 +738,20 @@ function SendSMS($params) {
 	
 }
 
+function SendEmail($params) {
+
+	$headers = "Content-Type: text/plain; charset=utf-8\n";
+    $headers .= "From: Watchdog Server ALERT <alert@livehost.cz>\n";
+	$headers .= "X-Priority: 1 (Highest)\n";
+	$headers .= "X-MSMail-Priority: High\n";
+	$headers .= "Importance: High\n";
+
+    $subject = "=?UTF-8?B?".base64_encode('ALERT - SERVER '.$params['server'].' DOWN')."?=";
+
+	$text = 'ALERT - Host '.$params['server'].' ('.$params['ipaddress'].') not responding. Date: '.date('Y-m-d H:i:s');
+
+    mail($params['email'], $subject, $text, $headers);
+
+	
+}
 ?>
