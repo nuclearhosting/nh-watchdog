@@ -34,7 +34,7 @@
  
  # MOznost nastavit vlastnu sms branu
  
- # Run as daemon
+ # Run as daemon (remove lockfile function)
  
  # MySQL check?
 ###################################################### 
@@ -131,7 +131,17 @@ if($argc == 1) {
 				die;						
 			break;
 			case '--run':
-				WatchDogRun();
+				if(!file_exists('.lock')) {
+					# Setup lock file
+					touch('.lock');
+					
+					WatchDogRun();
+					
+					unlink('.lock');
+				} else {
+					echo "Locked\n";
+					exit;
+				}
 			break;
 			case '--add-contact':
 				echo "Contact name: ";
@@ -399,8 +409,6 @@ function WatchDogRun() {
 		sleep(1);
 	}
 
-	
-
 }
 # Bulk insert
 function WatchDogBulkInsert($filename) {
@@ -468,9 +476,7 @@ function WatchDogBulkInsert($filename) {
 		}
 		
 		echo "All is done!\n";
-		die;
-		
-	
+		die; 
 }
 # Add contact
 function WatchDogAddContact($params) {
