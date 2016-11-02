@@ -22,19 +22,21 @@
  * 
  * http://sqliteonline.com/
  * http://www.devdungeon.com/content/how-use-sqlite3-php
+ * http://edoceo.com/exemplar/php-fork
+ * https://oliversmith.io/technology/2011/10/07/speeding-up-php-using-process-forking-for-image-resizing/
  */
 
-  # Ping
+ # Ping
  
  # Log kontrol / spusteni na konkretny server
- 
- # Running multithread
  
  # Pridelit kontaktom len urcite servery
  
  # MOznost nastavit vlastnu sms branu
-
-
+ 
+ # Run as daemon
+ 
+ # MySQL check?
 ###################################################### 
 # SQLite Data file - install parameter in the future
 $sqlite_path = "./watchdog.db";
@@ -301,7 +303,7 @@ function WatchDogUninstall() {
 # Run watchdog
 function WatchDogRun() {
 
-	global $sqlite_path;
+	global $sqlite_path,$child;
 	
 	# Get list of all active servers
 	$sql_select = "SELECT * FROM servers WHERE active='1' ORDER BY last_check ASC";
@@ -309,125 +311,96 @@ function WatchDogRun() {
 	$watchdog_db = new PDO("sqlite:{$sqlite_path}");
 	$result = $watchdog_db->query($sql_select);
 	
-	####################################################################
-	$child_list = 0;
-
+	####
 	declare(ticks = 1);
-	pcntl_signal(SIGCHLD, 'sig_handler');	
-	####################################################################
+	$max=5;
+	$child=0;
+	pcntl_signal(SIGCHLD, "sig_handler");	
+	####
 	
-	foreach($result as $result) {		
+	foreach($result as $result) {
 		$count = 0;
 		$maxTries = 3;
 		$send_notification = 0;
 		
 		################################################################
-		 // Fork
-			$pid = pcntl_fork();
-			switch ($pid) {
-			case -1: // Error
-				die('Fork failed, your system is b0rked!');
-				break;
-			case 0: // Child
-				// Remove Signal Handlers in Child
-				pcntl_signal(SIGCHLD,SIG_DFL);
-				###
-				$httpcode = GetHttpResponseCode($result['ipaddress'],$result['timeout']);
-				
-				while(true) {
+		while ($child >= $max) {
+            sleep(1);
+        }
+        
+        $child++;
+        # echo "[+]";
+        $pid=pcntl_fork();
+        
+        if($pid){
+		} else {
+					// CHILD
+					$httpcode = GetHttpResponseCode($result['ipaddress'],$result['timeout']);
 					
-					$expected_response = !empty($result['response']) ? $result['response'] : '200';
-					
-					if ($httpcode == $expected_response) {
-							echo "OK ".$result['ipaddress']."\n";
-							
-							# Insert log, update last_check
-							
-							break;
-					} else {
-							echo "not ok ".$httpcode." ".$count."\n";
-							# insert log, update last_check
-							
-							if($count == $maxTries) { 
-								$send_notification = 1;
+					while(true) {
+						
+						$expected_response = !empty($result['response']) ? $result['response'] : '200';
+						
+						if ($httpcode == $expected_response) {
+								# echo "OK ".$result['ipaddress']."\n";
+								
+								# Insert log, update last_check
+								
 								break;
-							} else {
-								sleep(5);
-								$count++;
+						} else {
+								# echo "not ok ".$httpcode." ".$count."\n";
+								# insert log, update last_check
+								
+								if($count == $maxTries) { 
+									$send_notification = 1;
+									break;
+								} else {
+									sleep(5);
+									$count++;
+								}
+						}
+					}
+
+					# Send notification on faulty host check
+					if($send_notification == 1) {
+							# echo "Sending notification for ".$result['ipaddress']."\n";
+								
+							# Get all active contacts				
+							$result_s = $watchdog_db->query("SELECT * FROM contacts WHERE active=1");
+							
+							$contacts = $result_s->fetchAll();
+							
+							if(count($contacts) >0) {
+								
+								foreach ($contacts as $contact) {
+									# print_r($contact);
+									if(!empty($contact['email'])) {
+										# Send Email to all contacts
+										SendEmail( array('email' => $contact['email'], 'server' => $result['hostname'], 'ipaddress' => $result['ipaddress']) );
+									}
+									
+									if(!empty($contact['phone'])) {
+										# Send SMS to all contacts
+										SendSMS(array('phone' => $contact['phone'], 'server' => $result['hostname'], 'ipaddress' => $result['ipaddress']));
+									}
+									
+								}
 							}
+							
 					}
-				}
-				###
-				exit(0);
-				break;
-			default: // Parent
-				echo "run: $child_list processes\n";
-				if ($child_list >= 10) {
-					// Just wait for one to die
-					pcntl_wait($x);
-					$child_list--;
-				}
-				$child_list++;
-				break;
-			}
+					exit(0);
+        }
+
+		
 		################################################################
-		
-	/*	$httpcode = GetHttpResponseCode($result['ipaddress'],$result['timeout']);
-		
-		while(true) {
-			
-			$expected_response = !empty($result['response']) ? $result['response'] : '200';
-			
-			if ($httpcode == $expected_response) {
-					echo "OK ".$result['ipaddress']."\n";
-					
-					# Insert log, update last_check
-					
-					break;
-			} else {
-					echo "not ok ".$httpcode." ".$count."\n";
-					# insert log, update last_check
-					
-					if($count == $maxTries) { 
-						$send_notification = 1;
-						break;
-					} else {
-						sleep(5);
-						$count++;
-					}
-			}
-		}
-		*/
-		# Send notification on faulty host check
-		if($send_notification == 1) {
-				echo "Sending notification for ".$result['ipaddress']."\n";
-					
-				# Get all active contacts				
-				$result_s = $watchdog_db->query("SELECT * FROM contacts WHERE active=1");
-				
-				$contacts = $result_s->fetchAll();
-				
-				if(count($contacts) >0) {
-					
-					foreach ($contacts as $contact) {
-						# print_r($contact);
-						if(!empty($contact['email'])) {
-							# Send Email to all contacts
-							SendEmail( array('email' => $contact['email'], 'server' => $result['hostname'], 'ipaddress' => $result['ipaddress']) );
-						}
-						
-						if(!empty($contact['phone'])) {
-							# Send SMS to all contacts
-							echo "Toto je SMS alert na vypadok";
-							# SendSMS(array('phone' => $contact['phone'], 'server' => $result['hostname'], 'ipaddress' => $result['ipaddress']);
-						}
-						
-					}
-				}
-				
-		}
 	}
+	while($child != 0){
+		# echo "($child)";
+		sleep(1);
+	}
+
 	
+
 }
 # Bulk insert
 function WatchDogBulkInsert($filename) {
@@ -444,8 +417,9 @@ function WatchDogBulkInsert($filename) {
 		$csv = array_map('str_getcsv', file($filename));
 				
 		foreach($csv as $row) {
-			
+
 			if ( count($row) != 5 ) {
+					
 					echo "Some of CSV file row does not contains all required fields. Check your CSV file and correct missing values\n";
 					die;
 			}
@@ -555,10 +529,11 @@ function WatchDogListAllContacts() {
 	try {
 		$rows = $watchdog_db->query($sql);
 		
-		echo "ID:\tName:\tEmail:\tPhone:\tActive:\n";
+		echo "ID:\t".str_pad("Name:",20)."\t".str_pad("Email:",20)."\t".str_pad("Phone:",20)."\tActive:\n";
+		echo str_repeat("=",90)."\n";
 		
 		foreach ($rows as $row) {
-			echo $row['id']."\t".$row['contact_name']."\t".$row['email']."\t".$row['phone']."\t".$row['active']."\n";
+			echo $row['id']."\t".str_pad($row['contact_name'],20)."\t".str_pad($row['email'],20)."\t".str_pad($row['phone'],20)."\t".$row['active']."\n";
 		}		
 	} catch(PDOException $e) {
 			echo $e->getMessage();
@@ -670,18 +645,19 @@ function WatchDogDeactivateContact($contact_id) {
 }
 ####### Helpers ##########
 
-function sig_handler($sig)	{
-		global $child_list;
-		switch ($sig) {
-		case SIGCHLD:
-			$child_list--;
-			while( ( $pid = pcntl_wait ( $sig, WNOHANG ) ) > 0 ){
-				$x = pcntl_wexitstatus ( $sig );
-			}
-			break;
-		}
+function sig_handler($signo){
+	  global $child;
+	  switch ($signo) {
+		case SIGCLD:
+		  while( ( $pid = pcntl_wait ( $signo, WNOHANG ) ) > 0 ){
+			$signal = pcntl_wexitstatus ($signo);
+			$child -= 1;
+			# echo "[-]";
+		  }
+		break;
+	  }
 }
-	
+
 function sread() {
 	$input = fgets(STDIN);
 	return rtrim($input);
