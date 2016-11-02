@@ -86,7 +86,7 @@ if($argc == 1) {
 				WatchDogBulkInsert($filepath);
 				die;
 			break;
-			case '--insert':
+			case '--add-server':
 					# Check, if is Watchdog installed or not yet
 					if(!file_exists($sqlite_path)) die("Cannot continue, Watchdog database not installed. \n");
 
@@ -107,7 +107,7 @@ if($argc == 1) {
 					WatchDogInsertServer($params);
 					exit;
 			break;
-			case '--remove':
+			case '--remove-server':
 					# Check, if is Watchdog installed or not yet
 					if(!file_exists($sqlite_path)) die("Cannot continue, Watchdog database not installed. \n");
 					
@@ -118,17 +118,33 @@ if($argc == 1) {
 					WatchDogDeleteServer($ipaddress);
 					exit;
 			break;
-			case '--activate':
+			case '--activate-server':
+				WatchDogListAllServers();
+				echo "Which server do you want to set as active? Enter ID:\n";	
+				$server_id = sread();
+				swriteln();
+				
+				WatchDogActivateServer($server_id);
+				
+				exit;
+			break;
+			case '--deactivate-server':
+				WatchDogListAllServers();
+				echo "Which server do you want to set as inactive? Enter ID:\n";	
+				$server_id = sread();
+				swriteln();
+				
+				WatchDogDeactivateServer($server_id);
+				
+				exit;			
+			break;
+			case '--edit-server':
 				echo "Not implemented yet.\n";
 				die;
 			break;
-			case '--deactivate':
-				echo "Not implemented yet.\n";
-				die;			
-			break;
 			case '--list-servers':
-				echo "Not implemented yet.\n";
-				die;						
+				WatchDogListAllServers();
+				exit;
 			break;
 			case '--run':
 				if(!file_exists('.lock')) {
@@ -649,6 +665,96 @@ function WatchDogDeactivateContact($contact_id) {
 	}
 	
 }
+# List all servers in watchdog
+function WatchDogListAllServers() {
+
+	global $sqlite_path;
+	
+	$watchdog_db = new PDO("sqlite:{$sqlite_path}");
+	$sql = "SELECT * FROM servers ORDER BY id ASC";
+	
+	try {
+		$rows = $watchdog_db->query($sql);
+		
+		echo "ID:\t".str_pad("Hostname:",35)."\t".str_pad("IP Address:",10)."\t".str_pad("Port:",5)."\t".str_pad("HTTP response:",8)."\t".str_pad("Timeout:",5)."\tActive:\n";
+		echo str_repeat("=",120)."\n";
+		
+		foreach ($rows as $row) {
+			echo $row['id']."\t".str_pad($row['hostname'],35)."\t".str_pad($row['ipaddress'],10)."\t".str_pad($row['port'],5)."\t".str_pad($row['response'],8)."\t".str_pad($row['timeout'],8)."\t".$row['active']."\n";
+		}		
+	} catch(PDOException $e) {
+			echo $e->getMessage();
+	}
+	
+}
+# Activate inactive server
+function WatchDogActivateServer($server_id) {
+
+	global $sqlite_path;
+	
+	
+	if(empty($server_id) || !filter_var($server_id, FILTER_VALIDATE_INT) === true) {
+		echo "Server ID is not valid.\n";
+		exit;
+	}
+	
+	$watchdog_db = new PDO("sqlite:{$sqlite_path}");
+		
+	$sql = "SELECT count(id) FROM servers WHERE id='{$server_id}'";
+	$sql2 = "UPDATE servers SET active=1 WHERE id='{$server_id}'";
+	
+	try {
+		$count = $watchdog_db->query($sql);
+		
+		if($count->fetch()[0] <> 1) {
+			echo "Server ID ".$server_id." not found. Nothing to do.\n";
+			exit;
+		} else {
+			$watchdog_db->query($sql2);
+			
+			echo "Server ID ".$server_id." activated sucessfuly.\n";
+			exit;
+		}		
+	} catch(PDOException $e) {
+			echo $e->getMessage();
+			exit;
+	}
+
+}
+# Deactivate active server
+function WatchDogDeactivateServer($server_id) {
+
+	global $sqlite_path;
+	
+	if(empty($server_id) || !filter_var($server_id, FILTER_VALIDATE_INT) === true) {
+		echo "Server ID is not valid.\n";
+		exit;
+	}
+	
+	$watchdog_db = new PDO("sqlite:{$sqlite_path}");
+		
+	$sql = "SELECT count(id) FROM servers WHERE id='{$server_id}'";
+	$sql2 = "UPDATE servers SET active=0 WHERE id='{$server_id}'";
+	
+	try {
+		$count = $watchdog_db->query($sql);
+		
+		if($count->fetch()[0] <> 1) {
+			echo "Server ID ".$server_id." not found. Nothing to do.\n";
+			exit;
+		} else {
+			$watchdog_db->query($sql2);
+			
+			echo "Server ID ".$server_id." deactivated sucessfuly.\n";
+			exit;
+		}		
+	} catch(PDOException $e) {
+			echo $e->getMessage();
+			exit;
+	}
+	
+}
+
 ####### Helpers ##########
 
 function sig_handler($signo){
