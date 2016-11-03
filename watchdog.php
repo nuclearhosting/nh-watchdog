@@ -2,6 +2,8 @@
 /*
  * watchdog.php
  * 
+ * Version: 0.1-03102016
+ * 
  * Copyright 2016 Branislav Viest, LiveHost.cz
  * https://branoviest.com | https://livehost.cz
  * info@branoviest.con
@@ -45,7 +47,9 @@
 # SQLite Data file - install parameter in the future
 $sqlite_path = "./watchdog.db";
 ######################################################
- 
+
+$version = "0.1-03102016";
+
 # What we do?
 if($argc == 1) {
 
@@ -56,6 +60,8 @@ if($argc == 1) {
 
 		switch($argv[1]) {
 			case '--help':
+				echo "WatchDog - Monitoring tool for your web and SQL servers
+Version: {$version}\n\n";
 				echo "Usage: \n
 	--install - install Watchdog monitoring
 	--uninstall - uninstall Watchdog monitoring
