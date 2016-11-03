@@ -43,6 +43,8 @@
  # Edit server
  
  # MySQL check?
+ 
+ # Before install, requirements check (pdo sqlite, curl)
 ###################################################### 
 # SQLite Data file - install parameter in the future
 $sqlite_path = "./watchdog.db";
@@ -283,13 +285,16 @@ function WatchDogInsertServer($params) {
 		die("IP address is invalid. You must enter valid IPv4 or IPv6 address\n");
 	} elseif(!filter_var($params['port'], FILTER_VALIDATE_INT) === true || $params['port'] > 65535 || $params['port'] < 80 ) {
 		die("Port number is invalid - enter valid port number\n");
-	} elseif(!filter_var($params['response'], FILTER_VALIDATE_INT) === true || $params['response'] <200 || $params['response'] >550) {
-		die("HTTP Response Code invalid - enter valid HTTP response code between 200 - 550\n");
+	} elseif(!empty($params['response'])) {
+		if (!filter_var($params['response'], FILTER_VALIDATE_INT) === true || $params['response'] <200 || $params['response'] >550) {
+			die("HTTP Response Code invalid - enter valid HTTP response code between 200 - 550\n");
+		}
 	} elseif(!filter_var($params['timeout'], FILTER_VALIDATE_INT) === true || $params['timeout'] <10 || $params['timeout'] > 90) {
 		die("Correct your response time - allowed is 10 - 90. \n");
 	}
 	
-	$params['hostname'] = trim(htmlspecialchars($params['hostname'], ENT_QUOTES));	
+	$params['hostname'] = trim(htmlspecialchars($params['hostname'], ENT_QUOTES));
+	$params['response'] = (!empty($params['response']) ? $params['response'] : 200);
 	
 	# End Input validation
 	
