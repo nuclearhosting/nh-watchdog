@@ -2,7 +2,9 @@
 /*
  * watchdog.php
  * 
- * Copyright 2016 branko <branko@branko-S551LB>
+ * Copyright 2016 Branislav Viest, LiveHost.cz
+ * https://branoviest.com | https://livehost.cz
+ * info@branoviest.con
  * 
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -36,6 +38,8 @@
  
  # Run as daemon (remove lockfile function)
  
+ # Edit server
+ 
  # MySQL check?
 ###################################################### 
 # SQLite Data file - install parameter in the future
@@ -52,12 +56,30 @@ if($argc == 1) {
 
 		switch($argv[1]) {
 			case '--help':
-				echo "Usage: \n";
-				die;
+				echo "Usage: \n
+	--install - install Watchdog monitoring
+	--uninstall - uninstall Watchdog monitoring
+	--bulkinsert - bulk import servers from CSV
+	--add-server - Add server to monitoring
+	--remove-server - Remove server from monitoring
+	--activate-server - Activate monitoring for inactive server
+	--deactivate-server - Deactivate monitoring for specific server
+	--list-servers - List all servers in monitoring database
+	--edit-server - not implemented yet
+	--run - Start the monitoring process
+	--add-contact - Add contact for notifications
+	--list-contacts - List all contacts in database
+	--delete-contact - Delete contact from notifications
+	--activate-contact - Set inactive contact as active
+	--deactivate-contact - Set active contact as inactuve - no notification wilil be performed for this contact\n
+	--help - This help\n\n";
+				echo "After you insert contacts and servers into monitoring database, set this scrit with --run parameter to the crontab for every one minute eg.
+* * * * * root cd /path/where/is/watchdog/located; php watchdog.php --run\n";
+				exit;
 			break;
 			case '--install':
 				WatchDogInstall();
-				die;
+				exit;
 			break;
 			case '--uninstall':
 				echo "Are you sure you want to uninstall Watchdog? You lost all your servers in monitoring database and all logs.\n";
@@ -67,13 +89,13 @@ if($argc == 1) {
 				
 				if($delete_confirmation == "DELETE") {
 						WatchDogUninstall();
-						die;
+						exit;
 				} else {
 						echo "Interrupted!\n";
+						exit;
 				}
 				
-				die;
-				
+				exit;
 			break;
 			case '--bulkinsert':
 				echo "CSV file format is: hostname,ipaddress,port,response_http_code,response_timeout\n";
