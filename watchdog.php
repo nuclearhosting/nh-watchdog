@@ -160,7 +160,7 @@ Version: {$version}\n\n";
 			break;
 			case '--deactivate-server':
 				WatchDogListAllServers();
-				echo "Which server do you want to set as inactive? Enter ID:\n";	
+				echo "Which server do you want to set as inactive? Enter ID: ";
 				$server_id = sread();
 				swriteln();
 				
@@ -169,7 +169,38 @@ Version: {$version}\n\n";
 				exit;			
 			break;
 			case '--edit-server':
-				echo "Not implemented yet.\n";
+				WatchDogListAllServers();
+				echo "Which server do you want to edit? Enter ID: ";
+				$server_id = sread();
+				swriteln();
+				echo "Leave blank if you do not want to change value.\n";
+				# Load default values for this server
+				$defaultvalues = LoadServerDefaultValues($server_id);
+				
+				echo "Server Hostname [{$defaultvalues['hostname']}]: ";
+				$hostname = sread();
+				echo "Server IP address [{$defaultvalues['ipaddress']}]: ";
+				$ipaddress = sread();					
+				echo "Port [{$defaultvalues['port']}]: ";
+				$port = sread();
+				echo "Expected response HTTP Code [{$defaultvalues['response']}]: ";
+				$response = sread();					
+				echo "Response timeout [{$defaultvalues['timeout']}]: ";
+				$responsetimeout = sread();
+				echo "Active / In-Active [{$defaultvalues['active']}]: ";
+				$active = sread();
+				swriteln();
+				
+				$params = array(
+					'hostname' => $hostname,
+					'ipaddress' => $ipaddress,
+					'port' => $port,
+					'response' => $response,
+					'timeout' => $responsetimeout,
+					'active' => $active
+				);
+				
+				WatchDogEditServer($server_id, $params);
 				die;
 			break;
 			case '--list-servers':
@@ -787,8 +818,96 @@ function WatchDogDeactivateServer($server_id) {
 	}
 	
 }
+# Edit server
+function WatchDogEditServer($server_id, $params) {
+	global $sqlite_path;
+	
+	$watchdog_db = new PDO("sqlite:{$sqlite_path}");
+	
+	# Let's do some tests for input strings
+	if(empty($server_id) || !filter_var($server_id, FILTER_VALIDATE_INT) === true) {
+		echo "Server ID is not valid.\n";
+		exit;
+	}
+	
+	# Check if server with that ID exists
+	$sql = "SELECT count(id) FROM servers WHERE id='".$server_id."'";
+	$count = $watchdog_db->query($sql);	
+	if($count->fetch()[0] <> 1) {
+		echo "Server with ID ".$server_id." does not exists\n";
+		exit;
+	}
+	
+	if(!empty($params['ipaddress'])) {
+		if (!filter_var($params['ipaddress'], FILTER_VALIDATE_IP) === true) {
+			die("IP address is invalid. You must enter valid IPv4 or IPv6 address\n");
+		}
+	} elseif(!empty($params['port'])) {
+		if (!filter_var($params['port'], FILTER_VALIDATE_INT) === true || $params['port'] > 65535 || $params['port'] < 80 ) {
+			die("Port number is invalid - enter valid port number\n");
+		}
+	} elseif(!empty($params['response'])) {
+		if (!filter_var($params['response'], FILTER_VALIDATE_INT) === true || $params['response'] <200 || $params['response'] >550) {
+			die("HTTP Response Code invalid - enter valid HTTP response code between 200 - 550\n");
+		}
+	} elseif(!empty($params['timeout'])) {
+		if (!filter_var($params['timeout'], FILTER_VALIDATE_INT) === true || $params['timeout'] <10 || $params['timeout'] > 90) {
+			die("Correct your response time - allowed is 10 - 90. \n");
+		}
+	} elseif(!empty($params['active'])) {
+		if(!filter_var($params['active'], FILTER_VALIDATE_INT) === true || $params['active'] != '0' || $params['active'] != '1') {
+			echo "Active is boolean value - 0 = inactive, 1 = active\m";
+			exit(1);
+		}
+	}
+	
+	# End Input validation
+
+	$defaultvalues = LoadServerDefaultValues($server_id);
+	
+	# Default value or new?
+	$params['hostname'] = (!empty($params['hostname']) ? trim(htmlspecialchars($params['hostname'], ENT_QUOTES)) : $defaultvalues['hostname']);
+	$params['response'] = (!empty($params['response']) ? $params['response'] : $defaultvalues['response']);
+	$params['ipaddress'] = (!empty($params['ipaddress']) ? $params['ipaddress'] : $defaultvalues['ipaddress']);
+	$params['port'] = (!empty($params['port']) ? $params['port'] : $defaultvalues['port']);
+	$params['timeout'] = (!empty($params['timeout']) ? $params['timeout'] : $defaultvalues['timeout']);
+	$params['active'] = (!empty($params['active']) ? $params['active'] : $defaultvalues['active']);
+	
+	$sql_insert = "UPDATE servers SET hostname='".$params['hostname']."', ipaddress='".$params['ipaddress']."', port='".$params['port']."', response='".$params['response']."', timeout='".$params['timeout']."', active='".$params['active']."' WHERE id='".$server_id."'";
+	
+	try {
+			$watchdog_db->exec($sql_insert);
+			
+			echo "Server updated successfuly\n";
+			die();
+	} catch(PDOException $e) {
+			echo $e->getMessage();
+			die;
+	}
+}
 
 ####### Helpers ##########
+
+function LoadServerDefaultValues($server_id) {
+
+	global $sqlite_path;
+
+	$watchdog_db = new PDO("sqlite:{$sqlite_path}");
+	
+	# Let's do some tests for input strings
+	if(empty($server_id) || !filter_var($server_id, FILTER_VALIDATE_INT) === true) {
+		echo "Server ID is not valid.\n";
+		exit;
+	}
+	
+	# Load default server values
+	$defaultvalues = $watchdog_db->query("SELECT * FROM servers WHERE id='".$server_id."'");
+	
+	$defaults = $defaultvalues->fetch(PDO::FETCH_ASSOC);
+	
+	return $defaults;
+	
+}
 
 function sig_handler($signo){
 	  global $child;
