@@ -43,6 +43,7 @@
  # MySQL check?
  
  # Before install, requirements check (pdo sqlite, curl)
+ 
 ###################################################### 
 # SQLite Data file - install parameter in the future
 $sqlite_path = "./watchdog.db";
@@ -933,7 +934,7 @@ function swriteln($text = '') {
 	echo $text."\n";
 }
 
-function GetHttpResponseCode($url,$timeout,$port = '80') {
+function GetHttpResponseCode($url,$timeout,$port) {
 
 	$ch = curl_init($url);
 	curl_setopt($ch, CURLOPT_PORT , $port);
