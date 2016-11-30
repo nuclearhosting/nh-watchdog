@@ -40,8 +40,6 @@
  
  # Run as daemon (remove lockfile function)
  
- # Edit server
- 
  # MySQL check?
  
  # Before install, requirements check (pdo sqlite, curl)
@@ -425,7 +423,7 @@ function WatchDogRun() {
         if($pid){
 		} else {
 					// CHILD
-					$httpcode = GetHttpResponseCode($result['ipaddress'],$result['timeout']);
+					$httpcode = GetHttpResponseCode($result['ipaddress'],$result['timeout'], $result['port']);
 					
 					while(true) {
 						
@@ -935,9 +933,10 @@ function swriteln($text = '') {
 	echo $text."\n";
 }
 
-function GetHttpResponseCode($url,$timeout) {
+function GetHttpResponseCode($url,$timeout,$port = '80') {
 
 	$ch = curl_init($url);
+	curl_setopt($ch, CURLOPT_PORT , $port);
 	curl_setopt($ch, CURLOPT_USERAGENT, "Mozilla/5.0 (compatible; MSIE 8.0; Windows NT 6.0)");
 	curl_setopt($ch, CURLOPT_SSL_VERIFYHOST,false);
 	curl_setopt($ch, CURLOPT_SSL_VERIFYPEER,false);
