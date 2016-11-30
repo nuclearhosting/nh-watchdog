@@ -437,7 +437,7 @@ function WatchDogRun() {
 								
 								break;
 						} else {
-								# echo "not ok ".$httpcode." ".$count."\n";
+								# echo "not ok ".$result['hostname']." ".$httpcode." ".$count."\n";
 								# insert log, update last_check
 								
 								if($count == $maxTries) { 
@@ -936,7 +936,13 @@ function swriteln($text = '') {
 
 function GetHttpResponseCode($url,$timeout,$port) {
 
-	$ch = curl_init($url);
+	if($port == '80') {
+		$http_schema = 'http://';
+	} elseif ($port == '443') {
+		$http_schema = 'https://';
+	}
+	
+	$ch = curl_init($http_schema.$url.":".$port);
 	curl_setopt($ch, CURLOPT_PORT , $port);
 	curl_setopt($ch, CURLOPT_USERAGENT, "Mozilla/5.0 (compatible; MSIE 8.0; Windows NT 6.0)");
 	curl_setopt($ch, CURLOPT_SSL_VERIFYHOST,false);
