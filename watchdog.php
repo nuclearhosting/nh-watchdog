@@ -2,10 +2,10 @@
 /*
  * watchdog.php
  * 
- * Version: 0.1-03102016
+ * Version: 0.1-11102017
  * 
- * Copyright 2016 Branislav Viest, LiveHost.cz
- * https://branoviest.com | https://livehost.cz
+ * Copyright 2016 Branislav Viest, Nuclear.Hosting
+ * https://branoviest.com | https://nuclear.hosting
  * info@branoviest.con
  * 
  * This program is free software; you can redistribute it and/or modify
@@ -22,34 +22,19 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
  * MA 02110-1301, USA.
- * 
- * 
- * http://sqliteonline.com/
- * http://www.devdungeon.com/content/how-use-sqlite3-php
- * http://edoceo.com/exemplar/php-fork
- * https://oliversmith.io/technology/2011/10/07/speeding-up-php-using-process-forking-for-image-resizing/
  */
 
- # Ping
- 
- # Log kontrol / spusteni na konkretny server
- 
- # Pridelit kontaktom len urcite servery
- 
- # MOznost nastavit vlastnu sms branu
- 
- # Run as daemon (remove lockfile function)
- 
- # MySQL check?
- 
- # Before install, requirements check (pdo sqlite, curl)
+ # TODO: Ping
+ #		 Checks logging
+ #		 Assign specific server(s) for specific contact(s)
+ # 		 Run as daemon (remove lockfile function)
  
 ###################################################### 
 # SQLite Data file - install parameter in the future
 $sqlite_path = "./watchdog.db";
 ######################################################
 
-$version = "0.1-03102016";
+$version = "0.1-11102017";
 
 # What we do?
 if($argc == 1) {
@@ -85,6 +70,7 @@ Version: {$version}\n\n";
 				exit;
 			break;
 			case '--install':
+				CheckRequirements();
 				WatchDogInstall();
 				exit;
 			break;
@@ -287,6 +273,9 @@ function WatchDogInstall() {
 		# Check, if is Watchdog installed or not yet
 		if(file_exists($sqlite_path)) die("Cannot continue, Watchdog database already installed in standard location. \n");
 		
+		# Check Watchdog requirements
+		
+
 		$watchdog_db = new PDO("sqlite:{$sqlite_path}");
 		
 		$sql_table = "CREATE TABLE IF NOT EXISTS servers(id INTEGER PRIMARY KEY AUTOINCREMENT, hostname VARCHAR(255), ipaddress VARCHAR(255) UNIQUE, port INT(5), response VARCHAR(55), timeout INT(3), active TEXT, last_check DATE);
@@ -964,30 +953,14 @@ function GetHttpResponseCode($url,$timeout,$port) {
 
 function SendSMS($params) {
 
-	$tc = $params['phone'];
-	
-	$text = 'ALERT - Host '.$params['server'].' ('.$params['ipaddress'].') not responding. Date: '.date('Y-m-d H:i:s');
-	
-	$token = sha1('LiveHostApiex1efvel589'.md5("ex1efvel"));
-	$data = base64_encode($text);
+	# Here you can implement you own SMS gateway
 
-
-	$ch = curl_init();
-	curl_setopt($ch,CURLOPT_URL, 'http://whmcs.livehost.cz/tools/sms.php');
-	curl_setopt($ch,CURLOPT_POST, true);
-	curl_setopt($ch, CURLOPT_POSTFIELDS, "token=$token&tc=$tc&data=$data");
-	curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-
-	$result = curl_exec($ch);
-
-	curl_close($ch);	
-	
 }
 
 function SendEmail($params) {
 
 	$headers = "Content-Type: text/plain; charset=utf-8\n";
-    $headers .= "From: Watchdog Server ALERT <alert@livehost.cz>\n";
+    $headers .= "From: Watchdog Server ALERT <alert@nuclear.hosting>\n";
 	$headers .= "X-Priority: 1 (Highest)\n";
 	$headers .= "X-MSMail-Priority: High\n";
 	$headers .= "Importance: High\n";
@@ -1000,4 +973,31 @@ function SendEmail($params) {
 
 	
 }
+
+function CheckRequirements() {
+	if(! _is_curl_installed() && ! _is_sqlite_installed() ) {
+		echo "You need to install CURL and PDO_SQLITE and SQLITE3 PHP extensions";
+		exit;
+	}
+}
+
+function _is_sqlite_installed() {
+    if  (in_array('pdo_sqlite', get_loaded_extensions()) && in_array('sqlite3', get_loaded_extensions()) ) {
+        return true;
+    }
+    else {
+        return false;
+    }
+}
+
+function _is_curl_installed() {
+    if  (in_array('curl', get_loaded_extensions())) {
+        return true;
+    }
+    else {
+        return false;
+    }
+}
+
+
 ?>
