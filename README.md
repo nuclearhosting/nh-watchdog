@@ -4,6 +4,14 @@ Our simple Watchdog monitoring script. watchdog allows you to monitoring HTTP/HT
 
 ## How it Works
 
+Watchdog is very simple in its concept. Watchdog can monitor multiple servers. All are stored in SQLite database. You can simply insert a new server to monitoring. Watchdog in every its run send HTTP GET request to your server and check if your server respond with specific (you can specify respond HTTP code by yourself) HTTP code. If not, if HTTP code sent by server is different or is reached timeout to respond (timeout you can also specify by yourself), watchdog send notification to all active contacts in database. Contacts you can specify and insert into database by yourself. 
+
+There are two types of notifications, email and SMS.
+
+Watchdog can monitor both HTTP and HTTPS protocols. 
+
+In current version, Watchdog is run from Crontab (every minute or interval you like) and is protected against multiple runs (with lock file). In the feature version there is plan to run watchdog as standalone daemon, running permanently. 
+
 ## Requirements
 
 - PHP 5.3+ (CLI)
@@ -71,3 +79,10 @@ List all possible parameters / help:
   After you insert contacts and servers into monitoring database, set this scrit with --run parameter to the crontab for every one minute eg.
   * * * * * root cd /path/where/is/watchdog/located; php watchdog.php --run
 </pre>
+
+## Credentials
+
+This program is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation; either version 2 of the License, or (at your option) any later version.
+
+Copyright 2016 Branislav Viest, Nuclear.Hosting
+https://branoviest.com | https://nuclear.hosting
