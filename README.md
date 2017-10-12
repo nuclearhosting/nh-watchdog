@@ -13,6 +13,27 @@ Our simple Watchdog monitoring script. watchdog allows you to monitoring HTTP/HT
 
 ## How to configure
 
+WatchDog uses SQLite database. When you first run / install Watchdog automatically create its SQLite database. Default path for Watchdogs database file is in the current directory where Watchdog script is located in. The default SQLite database file name is "watchdog.db". 
+
+To change default database name or location, just open watchdog.php in your favourite text editor, locate and edit following:
+<pre>
+  ###################################################### 
+  # SQLite Data file - install parameter in the future
+  $sqlite_path = "./watchdog.db";
+  ######################################################
+</pre>
+
+WatchDog also supports SMS notification. In this time, in current watchdog version is not implemented any SMS gateway service. But there is a space where you can implement / write your own code for SMS gateway which you are using. Just located PHP function called ''SendSMS'' (about line 954):
+<pre>
+function SendSMS($params) {
+
+	# Here you can implement you own SMS gateway
+
+}
+</pre>
+
+In this function you can complete your code , eg. sending SMS with HTTP GET to your SMS Gateway API provider or something like that. 
+
 ## Usage
 
 Watchdog is regular PHP script. Just type:
